@@ -387,6 +387,13 @@ class DroneAnalyzer:
         fps          = cap.get(cv2.CAP_PROP_FPS) or 25.0
         W            = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         H            = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+        # On cloud: cap resolution at 640px wide to keep per-frame memory low
+        if _ON_CLOUD and W > 640:
+            scale = 640 / W
+            W = 640
+            H = int(H * scale)
+
         duration     = total_frames / fps
         frames_to    = min(total_frames, MAX_FRAMES)
 
@@ -407,7 +414,9 @@ class DroneAnalyzer:
                     writer, out_path, _need_reencode = _w, _op, True
                     break
 
+        # On cloud: skip COCO supplement to avoid loading 2 YOLO models simultaneously
         vd_active    = self._visdrone_model is not None
+        run_coco_sup = (not _ON_CLOUD) and vd_active
         coco_filter  = _COCO_SUPPLEMENT if vd_active else _COCO_ALL
         primary_mdl  = self._visdrone_model if vd_active else self.model
         primary_cmap = VISDRONE_CATEGORY_MAP if vd_active else COCO_CATEGORY_MAP
@@ -433,6 +442,10 @@ class DroneAnalyzer:
             ret, frame = cap.read()
             if not ret:
                 break
+
+            # On cloud: resize to capped resolution to reduce per-frame memory
+            if _ON_CLOUD and (frame.shape[1] != W or frame.shape[0] != H):
+                frame = cv2.resize(frame, (W, H), interpolation=cv2.INTER_LINEAR)
 
             if frame_idx % self.frame_skip == 0:
                 frame_stats:  dict = {"time": round(frame_idx / fps, 2)}
@@ -492,9 +505,9 @@ class DroneAnalyzer:
                                             f"Stationary suspicious object (Track #{tid})"
                                         )
 
-                # ── COCO supplement (when VisDrone active) ─────────────────
+                # ── COCO supplement (local only — skipped on cloud to save RAM) ──
                 supp_result = None
-                if vd_active:
+                if run_coco_sup:
                     cres        = self.model.predict(
                         frame, conf=max(0.15, self.confidence - 0.05),
                         iou=self.iou, verbose=False,
