@@ -109,9 +109,12 @@ BOX_COLORS: dict[str, tuple] = {
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-MAX_FRAMES     = 150    # cloud-safe cap (~5 s @ 30 fps) — prevents OOM on 1 GB RAM
-TRAIL_LEN      = 30    # frames of trail kept per track
-LOITER_FRAMES  = 15    # consecutive processed-frames threshold for loitering
+# Streamlit Cloud mounts the repo at /mount/src — use this to detect cloud env
+_ON_CLOUD = os.path.exists('/mount/src')
+
+MAX_FRAMES     = 150  if _ON_CLOUD else 1500   # cloud: ~5 s cap to avoid OOM
+TRAIL_LEN      = 30   if _ON_CLOUD else 50
+LOITER_FRAMES  = 15   if _ON_CLOUD else 30
 LOITER_RADIUS  = 45    # px — centroid must stay within this radius
 FAST_SPEED_THR = 25.0  # px/frame
 
@@ -121,7 +124,7 @@ class DroneAnalyzer:
         self,
         confidence: float = 0.20,
         iou: float = 0.45,
-        frame_skip: int = 3,
+        frame_skip: int = 3 if os.path.exists('/mount/src') else 2,
         model=None,
         visdrone_model=None,
     ):
